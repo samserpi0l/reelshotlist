@@ -7,7 +7,27 @@ export default function Dashboard(){
   function demo(){ setScenes([{id:1,name:'Opening',desc:'Establishing',cam:'24mm',dur:'3s',light:'Golden Hour',mood:'cinematisch',iso:'200',f:'f/2.8',wb:'5600K',move:'Push-in'},
                                 {id:2,name:'Close',desc:'Close-up',cam:'50mm',dur:'2s',light:'Key left',mood:'intim',iso:'400',f:'f/2.0',wb:'5600K',move:'stativ'}]); }
   async function logout(){ await supabase.auth.signOut(); window.location.href='/'; }
-  async function toPremium(){ const r=await fetch('/api/stripe/checkout',{method:'POST'}); const d=await r.json(); if(d?.url) window.location.href=d.url; else alert('Stripe ENV prüfen.'); }
+  async function toPremium(){
+  // aktuelle Supabase-User-ID holen
+  const { data } = await supabase.auth.getUser();
+  const user_id = data?.user?.id;
+  if(!user_id){ alert('Kein User angemeldet'); return; }
+
+  const res = await fetch('/api/stripe/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ user_id })
+  });
+
+  const out = await res.json();
+  if (out?.url) {
+    window.location.href = out.url;
+  } else {
+    alert('Checkout konnte nicht erstellt werden. ENV prüfen.');
+    console.log(out);
+  }
+}
+
   return (<div className="container">
     <div className="header"><img src="/logo.svg" alt="logo"/><span className="badge">Free</span><div style={{marginLeft:'auto'}} className="muted">{user?.email}</div></div>
     <div className="card"><div className="toolbar">

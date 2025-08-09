@@ -1,3 +1,4 @@
+// pages/api/stripe/webhook.js
 import Stripe from 'stripe';
 import { buffer } from 'micro';
 import { createClient } from '@supabase/supabase-js';
@@ -21,30 +22,49 @@ export default async function handler(req, res) {
 
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY // <- muss in Vercel gesetzt sein
+    process.env.SUPABASE_SERVICE_ROLE_KEY // server-side key (RLS-bypass)
   );
 
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object;
-      const userId = session?.metadata?.user_id;
-      if (userId) {
-        console.log(`✅ Setting premium for user ${userId}`);
-        await admin.from('profiles').update({ premium: true }).eq('id', userId);
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object; // CheckoutSession
+        const userId = session?.metadata?.user_id;
+        if (userId) {
+          console.log(`✅ Setting premium for user ${userId}`);
+          await admin.from('profiles').update({ premium: true }).eq('id', userId);
+        } else {
+          console.warn('No user_id in checkout.session.completed metadata');
+        }
+        break;
       }
-      break;
-    }
-    case 'customer.subscription.deleted': {
-      const sub = event.data.object;
-      const userId = sub?.metadata?.user_id;
-      if (userId) {
-        console.log(`⚠️ Removing premium for user ${userId}`);
-        await admin.from('profiles').update({ premium: false }).eq('id', userId);
+      case 'customer.subscription.deleted': {
+        // Achtung: bei subscription events ist metadata u.U. nicht mehr vorhanden.
+        // Wenn du absolute Sicherheit willst, verknüpfe Stripe Customer <-> User in der DB.
+        const sub = event.data.object;
+        const userId = sub?.metadata?.user_id;
+        if (userId) {
+          console.log(`⚠️ Removing premium for user ${userId}`);
+          await admin.from('profiles').update({ premium: false }).eq('id', userId);
+        } else {
+          console.warn('No user_id in customer.subscription.deleted metadata');
+        }
+        break;
       }
-      break;
+      case 'customer.subscription.updated': {
+        // optional: anhand status premium setzen/entziehen
+        // const sub = event.data.object;
+        // const userId = sub?.metadata?.user_id;
+        // const active = sub?.status === 'active' || sub?.status === 'trialing';
+        // if (userId) await admin.from('profiles').update({ premium: active }).eq('id', userId);
+        break;
+      }
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
     }
-    default:
-      console.log(`Unhandled event type: ${event.type}`);
+  } catch (e) {
+    console.error('DB update error:', e);
+    return res.status(500).json({ ok: false });
   }
 
   res.status(200).json({ received: true });

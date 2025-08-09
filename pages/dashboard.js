@@ -10,13 +10,13 @@ export default function Dashboard() {
   const [isPremium, setIsPremium] = useState(false);
   const [msg, setMsg] = useState('');
 
-  // kleine helper
+  // helper: url params
   const q = useMemo(() => {
     if (typeof window === 'undefined') return new URLSearchParams();
     return new URLSearchParams(window.location.search);
   }, []);
 
-  // 1) user laden + premium-status ziehen
+  // 1) user + premium beim laden holen
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
@@ -37,7 +37,7 @@ export default function Dashboard() {
     if (!checkoutSuccess || !user?.id) return;
     (async () => {
       await refreshPremium(user.id);
-      // optional: query-params aufräumen
+      // param entfernen
       const url = new URL(window.location.href);
       url.searchParams.delete('checkout');
       window.history.replaceState({}, '', url.toString());
@@ -45,6 +45,30 @@ export default function Dashboard() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, user?.id]);
+
+  // 3) LIVE-UPDATE: auf Änderungen an profiles(id=this user) hören
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // ACHTUNG: Realtime muss in Supabase für die Tabelle "profiles" aktiviert sein.
+    // (Table Editor -> Realtime -> "Enable" bzw. "Broadcast changes".)
+    const channel = supabase
+      .channel('profiles-premium-watch')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        (payload) => {
+          const newPremium = !!payload.new?.premium;
+          setIsPremium(newPremium);
+          setMsg(newPremium ? 'Premium aktiviert (Live-Update).' : 'Premium entfernt (Live-Update).');
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   async function refreshPremium(userId) {
     const { data, error } = await supabase
@@ -55,7 +79,7 @@ export default function Dashboard() {
     if (!error && data) setIsPremium(data.premium === true);
   }
 
-  // demo-daten für die tabelle/karten
+  // demo-shotlist
   function demoGenerate() {
     setScenes([
       { id: 1, name: 'Opening', desc: 'Establishing', cam: '24mm', dur: '3s', light: 'Golden Hour', mood: 'cinematisch', iso: '200', f: 'f/2.8', wb: '5600K', move: 'Push-in' },
@@ -66,7 +90,6 @@ export default function Dashboard() {
   }
 
   async function toPremium() {
-    // supabase user id ermitteln und an die api senden
     const { data } = await supabase.auth.getUser();
     const user_id = data?.user?.id;
     if (!user_id) {
@@ -116,6 +139,7 @@ export default function Dashboard() {
               Premium freischalten
             </button>
           )}
+          <button onClick={() => user?.id && refreshPremium(user.id)}>Status aktualisieren</button>
           <button onClick={logout}>Logout</button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 // pages/inspiration.js
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-
+ 
 export default function Inspiration() {
   const [user, setUser] = useState(null);
   const [lang, setLang] = useState('de'); // 'de' | 'en'

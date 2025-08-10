@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     SUPABASE_SERVICE_ROLE_KEY,
     ALLOW_FREE_INSPIRATION
   } = process.env;
-
+ 
   if (!OPENAI_API_KEY) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
   if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: 'Missing Supabase env vars' });

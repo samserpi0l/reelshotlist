@@ -6,7 +6,7 @@
  * Premium-Gate: profiles.premium muss true sein (oder setze ALLOW_FREE_INSPIRATION=true für Tests)
  */
 import { createClient } from '@supabase/supabase-js';
-import { buildInspirationSystemPrompt, buildUserPrompt } from '../../lib/inspirationPrompt';
+import { buildInspirationSystemPrompt, buildUserPrompt } from '../lib/inspirationPrompt';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });

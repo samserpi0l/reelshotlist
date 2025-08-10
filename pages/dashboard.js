@@ -107,8 +107,25 @@ export default function Dashboard() {
       window.location.href = out.url;
     } else {
       alert('Checkout konnte nicht erstellt werden. Bitte ENV in Vercel prüfen.');
-      // Optional: console.log(out);
     }
+  }
+
+  // 👉 NEU: Kundenportal öffnen (Abo verwalten/kündigen)
+  async function toPortal(){
+    const { data } = await supabase.auth.getUser();
+    const user_id = data?.user?.id;
+    if (!user_id) {
+      alert('Kein User angemeldet.');
+      return;
+    }
+    const res = await fetch('/api/stripe/portal', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ user_id })
+    });
+    const out = await res.json();
+    if (out?.url) window.location.href = out.url;
+    else alert('Kundenportal konnte nicht geöffnet werden.');
   }
 
   async function logout() {
@@ -135,9 +152,15 @@ export default function Dashboard() {
           <button className="primary" onClick={demoGenerate}>Shotlist erstellen</button>
           <button onClick={() => setView('table')}>Tabellenansicht</button>
           <button onClick={() => setView('cards')}>Shot-Cards</button>
+
           {!isPremium && (
             <button onClick={toPremium} style={{ marginLeft: 'auto' }}>
               Premium freischalten
+            </button>
+          )}
+          {isPremium && (
+            <button onClick={toPortal} style={{ marginLeft: 'auto' }}>
+              Abo verwalten
             </button>
           )}
           <button onClick={() => user && user.id && refreshPremium(user.id)}>

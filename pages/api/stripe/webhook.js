@@ -2,25 +2,27 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-// Next muss den Raw-Body lassen, sonst schlägt die Signatur fehl
 export const config = { api: { bodyParser: false } };
 
-// Eigene buffer-Funktion (keine Abhängigkeit zu "micro" nötig)
+// eigener Buffer (keine "micro" Abhängigkeit nötig)
 function readBuffer(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('data', (c) => chunks.push(c));
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
+// Helper: Premium aus Stripe-Status ableiten
+function isPremiumFromStatus(status) {
+  // Einfacher Gate: aktiv oder in Probezeit → Premium
+  return status === 'active' || status === 'trialing';
+}
 
-  // --- Hard checks auf ENV, damit wir klare Fehler bekommen ---
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+
   const {
     STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET,
@@ -29,11 +31,11 @@ export default async function handler(req, res) {
   } = process.env;
 
   if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
-    console.error('Missing Stripe env vars');
+    console.error('[webhook] Missing Stripe env vars');
     return res.status(500).json({ error: 'Missing Stripe env vars' });
   }
   if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('Missing Supabase env vars');
+    console.error('[webhook] Missing Supabase env vars');
     return res.status(500).json({ error: 'Missing Supabase env vars' });
   }
 
@@ -45,46 +47,104 @@ export default async function handler(req, res) {
     const sig = req.headers['stripe-signature'];
     event = stripe.webhooks.constructEvent(buf, sig, STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
+    console.error('[webhook] Signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Admin-Client mit Service Role (RLS bypass)
   const admin = createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object; // Stripe.Checkout.Session
-        const userId = session?.metadata?.user_id;
-        console.log('[webhook] checkout.session.completed user_id =', userId);
+        const session = event.data.object;
+        const userId = session?.metadata?.user_id || null;
+        const customerId = session?.customer || null;
 
+        console.log('[webhook] checkout.session.completed', { userId, customerId });
+
+        // Mapping upsert (falls vorhanden)
+        if (customerId && userId) {
+          const { error: mapErr } = await admin
+            .from('stripe_customers')
+            .upsert({ customer_id: customerId, user_id: userId });
+          if (mapErr) console.error('[webhook] mapping upsert error:', mapErr);
+        }
+
+        if (userId) {
+          const { error } = await admin
+            .from('profiles')
+            .update({ premium: true })
+            .eq('id', userId);
+          if (error) {
+            console.error('[webhook] set premium=true failed:', error);
+            return res.status(500).json({ error: 'DB update failed' });
+          }
+          console.log('[webhook] premium set to TRUE for', userId);
+        } else {
+          console.warn('[webhook] No user_id in metadata – premium not set');
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        const customerId = sub?.customer;
+        const status = sub?.status;
+
+        console.log('[webhook] subscription.updated', { customerId, status });
+
+        // user_id über Mapping holen
+        if (!customerId) break;
+        const { data: mapRows, error: mapErr } = await admin
+          .from('stripe_customers')
+          .select('user_id')
+          .eq('customer_id', customerId)
+          .limit(1)
+          .maybeSingle();
+
+        if (mapErr) {
+          console.error('[webhook] mapping fetch error:', mapErr);
+          break;
+        }
+        const userId = mapRows?.user_id;
         if (!userId) {
-          console.warn('[webhook] missing user_id in metadata');
+          console.warn('[webhook] No user mapping for customer', customerId);
           break;
         }
 
+        const premium = isPremiumFromStatus(status);
         const { error } = await admin
           .from('profiles')
-          .update({ premium: true })
+          .update({ premium })
           .eq('id', userId);
-
         if (error) {
-          console.error('[webhook] supabase update error:', error);
+          console.error('[webhook] update premium from status failed:', error);
           return res.status(500).json({ error: 'DB update failed' });
         }
-
-        console.log('[webhook] premium set to TRUE for', userId);
+        console.log('[webhook] premium set to', premium, 'for', userId);
         break;
       }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
-        const userId = sub?.metadata?.user_id; // kann oft fehlen!
-        console.log('[webhook] subscription.deleted user_id =', userId);
+        const customerId = sub?.customer;
+        console.log('[webhook] subscription.deleted', { customerId });
+        if (!customerId) break;
 
+        const { data: mapRows, error: mapErr } = await admin
+          .from('stripe_customers')
+          .select('user_id')
+          .eq('customer_id', customerId)
+          .limit(1)
+          .maybeSingle();
+
+        if (mapErr) {
+          console.error('[webhook] mapping fetch error:', mapErr);
+          break;
+        }
+        const userId = mapRows?.user_id;
         if (!userId) {
-          console.warn('[webhook] no user_id on subscription.deleted (consider mapping stripe_customer <-> user)');
+          console.warn('[webhook] No user mapping for customer', customerId);
           break;
         }
 
@@ -92,12 +152,10 @@ export default async function handler(req, res) {
           .from('profiles')
           .update({ premium: false })
           .eq('id', userId);
-
         if (error) {
-          console.error('[webhook] supabase update error:', error);
+          console.error('[webhook] set premium=false failed:', error);
           return res.status(500).json({ error: 'DB update failed' });
         }
-
         console.log('[webhook] premium set to FALSE for', userId);
         break;
       }

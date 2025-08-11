@@ -91,7 +91,17 @@ Follow the JSON schema strictly.`.trim();
 // ------------------------------------------------------
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  // Allow CORS preflight & HEAD
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, HEAD');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(200).end();
+  }
+  if (req.method === 'HEAD') return res.status(200).end();
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed', method: req.method });
+  }
 
   const {
     OPENAI_API_KEY,

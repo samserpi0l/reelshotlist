@@ -33,9 +33,16 @@ export default function Inspiration() {
         body: JSON.stringify(body)
       });
 
-      const out = await res.json();
+      let out;
+      try {
+        out = await res.json();
+      } catch {
+        setError(`Serverfehler (${res.status}).`);
+        return;
+      }
+
       if (!res.ok || !out?.ok) {
-        const msg = out?.error || 'Fehler bei der Erstellung';
+        const msg = out?.error || `Fehler (${res.status})`;
         setError(msg);
         return;
       }
@@ -66,7 +73,7 @@ export default function Inspiration() {
             onChange={e=>setPrompt(e.target.value)}
             placeholder={lang === 'en'
               ? 'Describe your idea (e.g., car shoot in Berlin, BMW M4, 50% car / 50% driver, cinematic, moody light)…'
-              : 'Beschreibe deine Idee (z. B. Auto-Shooting in Berlin, BMW M4, 50% Auto / 50% Fahrer, cineastisch, stimmungsvolles Licht)…'}
+              : 'Beschreibe deine Idee (z. B. Auto-Shooting in Deutschland, BMW M4, 50% Auto / 50% Fahrer, cineastisch, stimmungsvolles Licht)…'}
             rows={4}
             style={{ flex: 1 }}
           />
@@ -119,7 +126,7 @@ export default function Inspiration() {
                   ))}
                 </tbody>
               </table>
-          </div>
+            </div>
           )}
 
           {view === 'cards' && (

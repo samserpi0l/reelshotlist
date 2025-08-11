@@ -3,7 +3,7 @@
  * POST /api/inspire
  * Body: { user_id?: string, prompt: string, lang?: 'de'|'en' }
  * ENV: OPENAI_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- * Premium-Gate: profiles.premium muss true sein (deaktivierbar via ALLOW_FREE_INSPIRATION=true)
+ * Optional: ALLOW_FREE_INSPIRATION=true  (zum Testen ohne Premium)
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -109,17 +109,24 @@ export default async function handler(req, res) {
   const { user_id, prompt, lang = 'de' } = req.body || {};
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'Missing prompt' });
 
-  // Premium-Gate (temporär deaktivierbar)
+  // Premium-Gate (klare Fehlertexte)
   if (!ALLOW_FREE_INSPIRATION) {
-    if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
+    if (!user_id) {
+      return res.status(400).json({ error: 'Missing user_id (client not logged in?)' });
+    }
     const admin = createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: prof, error: profErr } = await admin
       .from('profiles')
       .select('premium')
       .eq('id', user_id)
       .single();
-    if (profErr) return res.status(500).json({ error: 'Profile check failed', details: profErr });
-    if (!prof?.premium) return res.status(402).json({ error: 'Premium required' });
+    if (profErr) {
+      console.error('[inspire] profile check error:', profErr);
+      return res.status(500).json({ error: 'Profile check failed', details: profErr.message || profErr });
+    }
+    if (!prof?.premium) {
+      return res.status(402).json({ error: 'Premium required' });
+    }
   }
 
   try {
@@ -145,25 +152,37 @@ export default async function handler(req, res) {
 
     if (!resp.ok) {
       const text = await resp.text();
+      console.error('[inspire] OpenAI non-OK:', resp.status, text);
       return res.status(500).json({ error: 'OpenAI error', details: text });
     }
 
-    const data = await resp.json();
+    // robustes Parsen/Fehler
+    let data;
+    try {
+      data = await resp.json();
+    } catch {
+      const text = await resp.text();
+      console.error('[inspire] JSON parse fail, body:', text);
+      return res.status(500).json({ error: 'Invalid JSON from OpenAI', details: text });
+    }
+
     const content = data?.choices?.[0]?.message?.content;
     if (!content) return res.status(500).json({ error: 'Empty response from model' });
 
     let parsed;
     try {
       parsed = JSON.parse(content);
-    } catch {
-      return res.status(500).json({ error: 'Invalid JSON from model' });
+    } catch (e) {
+      console.error('[inspire] model content not JSON:', content);
+      return res.status(500).json({ error: 'Model returned non-JSON' });
     }
 
     if (!Array.isArray(parsed?.shots)) {
       return res.status(500).json({ error: 'Model JSON missing "shots" array' });
     }
 
-    parsed.shots = parsed.shots.slice(0, 12).map((s, idx) => ({
+    // Sanitize & clamp
+    const shots = parsed.shots.slice(0, 12).map((s, idx) => ({
       id: Number(s.id ?? idx + 1),
       name: String(s.name ?? `Shot ${idx + 1}`),
       description: String(s.description ?? ''),
@@ -188,9 +207,10 @@ export default async function handler(req, res) {
       ok: true,
       title: String(parsed.title ?? (lang === 'en' ? 'Inspiration Shotlist' : 'Inspiration-Shotlist')),
       context: String(parsed.context ?? ''),
-      shots: parsed.shots
+      shots
     });
   } catch (e) {
+    console.error('[inspire] server error:', e);
     return res.status(500).json({ error: 'Server error', details: e?.message || 'unknown' });
   }
 }

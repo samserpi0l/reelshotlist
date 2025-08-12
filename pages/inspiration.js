@@ -4,24 +4,53 @@ import { supabase } from '../lib/supabaseClient';
 
 export default function Inspiration() {
   const [user, setUser] = useState(null);
+  const [isPremium, setIsPremium] = useState(false);
   const [lang, setLang] = useState('de'); // 'de' | 'en'
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { title, context, shots[] }
   const [view, setView] = useState('table');
   const [error, setError] = useState('');
+  const [needsPremium, setNeedsPremium] = useState(false);
 
+  // User + Premium laden
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (!data?.user) { window.location.href = '/'; return; }
       setUser(data.user);
+
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('premium')
+        .eq('id', data.user.id)
+        .single();
+      setIsPremium(!!prof?.premium);
     })();
   }, []);
+
+  async function toPremium() {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const user_id = data?.user?.id;
+      if (!user_id) return alert('Bitte einloggen.');
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id })
+      });
+      const out = await res.json();
+      if (out?.url) window.location.href = out.url;
+      else alert('Checkout konnte nicht gestartet werden.');
+    } catch (e) {
+      alert('Fehler beim Öffnen des Checkouts.');
+    }
+  }
 
   async function generate() {
     setLoading(true);
     setError('');
+    setNeedsPremium(false);
     setResult(null);
     try {
       const body = { prompt, lang };
@@ -38,6 +67,13 @@ export default function Inspiration() {
         out = await res.json();
       } catch {
         setError(`Serverfehler (${res.status}).`);
+        return;
+      }
+
+      // Premium fehlt → Upgrade-Hinweis anzeigen
+      if (res.status === 402 || out?.error === 'Premium required') {
+        setNeedsPremium(true);
+        setError('');
         return;
       }
 
@@ -60,8 +96,34 @@ export default function Inspiration() {
       <div className="header">
         <img src="/logo.svg" alt="logo" />
         <h1 style={{marginLeft:12}}>Inspiration</h1>
-        <div style={{ marginLeft: 'auto' }} className="muted">{user?.email}</div>
+        <div style={{ marginLeft: 'auto' }} className="muted">
+          {isPremium ? 'Premium' : 'Free'} • {user?.email}
+        </div>
       </div>
+
+      {/* Premium-Hinweis für Free-User (sichtbar bevor man was erzeugt) */}
+      {!isPremium && !needsPremium && (
+        <div className="card" style={{ borderColor:'#2563eb' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+            <div className="muted">
+              Der Inspiration-Modus ist ein <strong>Premium-Feature</strong>. Du kannst ihn mit einem Klick freischalten.
+            </div>
+            <button className="primary" onClick={toPremium}>Jetzt Premium testen</button>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade-CTA wenn API 402 zurückgab */}
+      {needsPremium && (
+        <div className="card" style={{ borderColor:'#f59e0b', background:'#fff8eb' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+            <div>
+              <strong>Premium erforderlich</strong> – Bitte upgrade, um Inspiration-Shotlists zu generieren.
+            </div>
+            <button className="primary" onClick={toPremium}>Premium freischalten</button>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="toolbar" style={{ gap: 12 }}>

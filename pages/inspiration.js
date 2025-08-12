@@ -13,7 +13,6 @@ export default function Inspiration() {
   const [error, setError] = useState('');
   const [needsPremium, setNeedsPremium] = useState(false);
 
-  // User + Premium laden
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -70,7 +69,6 @@ export default function Inspiration() {
         return;
       }
 
-      // Premium fehlt → Upgrade-Hinweis anzeigen
       if (res.status === 402 || out?.error === 'Premium required') {
         setNeedsPremium(true);
         setError('');
@@ -91,6 +89,40 @@ export default function Inspiration() {
     }
   }
 
+  async function exportPdf() {
+    try {
+      if (!result || !user?.id) return;
+      const res = await fetch('/api/export/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          lang,
+          title: result.title,
+          context: result.context,
+          shots: result.shots
+        })
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        alert('PDF Export fehlgeschlagen: ' + txt.slice(0, 300));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().slice(0,10);
+      a.download = `shotlist-${date}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('PDF Export Fehler.');
+    }
+  }
+
   return (
     <div className="container">
       <div className="header">
@@ -101,7 +133,6 @@ export default function Inspiration() {
         </div>
       </div>
 
-      {/* Premium-Hinweis für Free-User (sichtbar bevor man was erzeugt) */}
       {!isPremium && !needsPremium && (
         <div className="card" style={{ borderColor:'#2563eb' }}>
           <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
@@ -113,7 +144,6 @@ export default function Inspiration() {
         </div>
       )}
 
-      {/* Upgrade-CTA wenn API 402 zurückgab */}
       {needsPremium && (
         <div className="card" style={{ borderColor:'#f59e0b', background:'#fff8eb' }}>
           <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
@@ -147,6 +177,11 @@ export default function Inspiration() {
             <>
               <button onClick={()=>setView('table')}>Tabelle</button>
               <button onClick={()=>setView('cards')}>Cards</button>
+              {isPremium && (
+                <button onClick={exportPdf} className="secondary">
+                  Als PDF speichern
+                </button>
+              )}
             </>
           )}
         </div>

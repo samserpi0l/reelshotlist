@@ -1,8 +1,10 @@
 // pages/inspiration.js
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 
 export default function Inspiration() {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [lang, setLang] = useState('de'); // 'de' | 'en'
@@ -16,7 +18,7 @@ export default function Inspiration() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!data?.user) { window.location.href = '/'; return; }
+      if (!data?.user) { router.replace('/'); return; }
       setUser(data.user);
 
       const { data: prof } = await supabase
@@ -26,7 +28,7 @@ export default function Inspiration() {
         .single();
       setIsPremium(!!prof?.premium);
     })();
-  }, []);
+  }, [router]);
 
   async function toPremium() {
     try {
@@ -126,8 +128,13 @@ export default function Inspiration() {
   return (
     <div className="container">
       <div className="header">
-        <img src="/logo.svg" alt="logo" />
-        <h1 style={{marginLeft:12}}>Inspiration</h1>
+        <div
+          style={{ display:'flex', alignItems:'center', cursor:'pointer' }}
+          onClick={() => router.push('/')}
+        >
+          <img src="/logo.svg" alt="logo" />
+          <h1 style={{marginLeft:12}}>Inspiration</h1>
+        </div>
         <div style={{ marginLeft: 'auto' }} className="muted">
           {isPremium ? 'Premium' : 'Free'} • {user?.email}
         </div>
@@ -150,7 +157,7 @@ export default function Inspiration() {
             <div>
               <strong>Premium erforderlich</strong> – Bitte upgrade, um Inspiration-Shotlists zu generieren.
             </div>
-            <button className="primary" onClick={toPremium}>Premium freischalten</button>
+              <button className="primary" onClick={toPremium}>Premium freischalten</button>
           </div>
         </div>
       )}

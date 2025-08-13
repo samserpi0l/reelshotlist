@@ -19,13 +19,11 @@ export default function Dashboard() {
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (!data?.user) {
-        // nicht eingeloggt → zurück zur Startseite/Sign-In
         router.replace('/');
         return;
       }
       setUser(data.user);
 
-      // Premium-Status laden
       const { data: prof, error } = await supabase
         .from('profiles')
         .select('premium')
@@ -33,29 +31,21 @@ export default function Dashboard() {
         .single();
 
       if (!error) setIsPremium(!!prof?.premium);
-
       setLoading(false);
 
-      // Realtime-Subscription: wenn Webhook premium toggled
       const channel = supabase
         .channel('profiles-realtime')
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${data.user.id}` },
-          (payload) => {
-            const next = !!payload.new?.premium;
-            setIsPremium(next);
-          }
+          (payload) => setIsPremium(!!payload.new?.premium)
         )
         .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      return () => supabase.removeChannel(channel);
     })();
   }, [router]);
 
-  // Stripe Checkout (Upgrade)
   async function onUpgrade() {
     try {
       const { data } = await supabase.auth.getUser();
@@ -74,13 +64,11 @@ export default function Dashboard() {
     }
   }
 
-  // Stripe Portal (Abo verwalten)
   async function onManageSubscription() {
     try {
       const { data } = await supabase.auth.getUser();
       const user_id = data?.user?.id;
       if (!user_id) return alert('Bitte einloggen.');
-
       const res = await fetch('/api/stripe/portal', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
@@ -94,12 +82,11 @@ export default function Dashboard() {
     }
   }
 
-  // Inspiration öffnen (nur Premium)
   function openInspiration() {
     router.push('/inspiration');
   }
 
-  // --- Optional: Reel-URL Demo-Handler (passe /api/route später an deine bestehende Route an) ---
+  // Platzhalter für Reel-Analyse – passe Route an deine echte API an
   async function handleReelAnalyze() {
     setReelError('');
     setReelBusy(true);
@@ -109,10 +96,6 @@ export default function Dashboard() {
         setReelError('Bitte einen gültigen Instagram Reel-Link einfügen.');
         return;
       }
-      // HINWEIS:
-      // Ersetze '/api/reels/analyze' durch deine existierende API-Route,
-      // falls sie anders heißt. Dieser Block ist nur ein Platzhalter,
-      // damit die UI nicht bricht.
       const res = await fetch('/api/reels/analyze', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
@@ -136,8 +119,10 @@ export default function Dashboard() {
     return (
       <div className="container">
         <div className="header">
-          <img src="/logo.svg" alt="logo" />
-          <h1 style={{ marginLeft: 12 }}>Dashboard</h1>
+          <div style={{ display:'flex', alignItems:'center', cursor:'pointer' }} onClick={() => router.push('/')}>
+            <img src="/logo.svg" alt="logo" />
+            <h1 style={{ marginLeft: 12 }}>Dashboard</h1>
+          </div>
         </div>
         <div className="card">
           <div className="muted">Lade dein Profil…</div>
@@ -150,8 +135,13 @@ export default function Dashboard() {
     <div className="container">
       {/* Header */}
       <div className="header">
-        <img src="/logo.svg" alt="logo" />
-        <h1 style={{ marginLeft: 12 }}>Dashboard</h1>
+        <div
+          style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => router.push('/')}
+        >
+          <img src="/logo.svg" alt="logo" />
+          <h1 style={{ marginLeft: 12 }}>Dashboard</h1>
+        </div>
         <div style={{ marginLeft: 'auto' }} className="muted">
           {isPremium ? 'Premium' : 'Free'} • {user?.email}
         </div>
@@ -195,7 +185,6 @@ export default function Dashboard() {
         {reelError && <div className="muted" style={{ color:'#e11d48', marginTop: 8 }}>{reelError}</div>}
         {reelInfo && (
           <div className="muted" style={{ marginTop: 8 }}>
-            {/* Hier kannst du dein bestehendes Ergebnis-Rendering einfügen */}
             Reel analysiert. (Platzhalter-Result) – integriere hier deine Shotlist-Ausgabe.
           </div>
         )}

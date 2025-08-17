@@ -163,11 +163,17 @@ export default function Inspiration() {
       )}
 
       <div className="card">
-        <div className="toolbar" style={{ gap: 12 }}>
+        <div className="toolbar" style={{ gap: 12, flexWrap:'wrap' }}>
+          {/* NEU: Zurück-Button */}
+          <button onClick={() => router.push('/dashboard')} className="secondary">
+            ← Zurück zum Dashboard
+          </button>
+
           <select value={lang} onChange={e=>setLang(e.target.value)}>
             <option value="de">Deutsch</option>
             <option value="en">English</option>
           </select>
+
           <textarea
             value={prompt}
             onChange={e=>setPrompt(e.target.value)}
@@ -175,7 +181,7 @@ export default function Inspiration() {
               ? 'Describe your idea (e.g., car shoot in Berlin, BMW M4, 50% car / 50% driver, cinematic, moody light)…'
               : 'Beschreibe deine Idee (z. B. Auto-Shooting in Deutschland, BMW M4, 50% Auto / 50% Fahrer, cineastisch, stimmungsvolles Licht)…'}
             rows={4}
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 280 }}
           />
           <button className="primary" onClick={generate} disabled={loading || !prompt.trim()}>
             {loading ? (lang === 'en' ? 'Generating…' : 'Erzeuge…') : (lang === 'en' ? 'Generate' : 'Erzeugen')}

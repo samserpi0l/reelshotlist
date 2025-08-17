@@ -119,7 +119,10 @@ export default function Dashboard() {
     return (
       <div className="container">
         <div className="header">
-          <div style={{ display:'flex', alignItems:'center', cursor:'pointer' }} onClick={() => router.push('/')}>
+          <div
+            style={{ display:'flex', alignItems:'center', cursor:'pointer' }}
+            onClick={() => router.push('/dashboard')}
+          >
             <img src="/logo.svg" alt="logo" />
             <h1 style={{ marginLeft: 12 }}>Dashboard</h1>
           </div>
@@ -137,7 +140,7 @@ export default function Dashboard() {
       <div className="header">
         <div
           style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/dashboard')}
         >
           <img src="/logo.svg" alt="logo" />
           <h1 style={{ marginLeft: 12 }}>Dashboard</h1>

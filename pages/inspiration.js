@@ -130,7 +130,7 @@ export default function Inspiration() {
       <div className="header">
         <div
           style={{ display:'flex', alignItems:'center', cursor:'pointer' }}
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/dashboard')}
         >
           <img src="/logo.svg" alt="logo" />
           <h1 style={{marginLeft:12}}>Inspiration</h1>
